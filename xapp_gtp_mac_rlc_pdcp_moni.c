@@ -32,19 +32,43 @@
 #include <inttypes.h>
 
 
-// xapp_gtp_mac_rlc_pdcp_moni.c
-
-#ifndef MEAS_TYPE_PDCP_DELIVERED_SDU_COUNT
-#define MEAS_TYPE_PDCP_DELIVERED_SDU_COUNT (1 << 0)
-#endif
-
-#ifndef MEAS_TYPE_PDCP_DISCARDED_SDU_COUNT
-#define MEAS_TYPE_PDCP_DISCARDED_SDU_COUNT (1 << 1)
-#endif
-
-
 static
 uint64_t cnt_mac;
+
+typedef struct {
+    int rlc_pkt_loss;
+    int rlc_pkt_total;
+    int pdcp_pkt_loss;
+    int pdcp_pkt_total;
+  } packet_stats;
+
+  packet_stats tx_stats = {
+    .rlc_pkt_loss = 0,
+    .rlc_pkt_total = 0,
+    .pdcp_pkt_loss = 0,
+    .pdcp_pkt_total = 0,
+  };
+
+  packet_stats rx_stats = {
+    .rlc_pkt_loss = 0,
+    .rlc_pkt_total = 0,
+    .pdcp_pkt_loss = 0,
+    .pdcp_pkt_total = 0,
+  };
+
+int *pdcp_txpdu_sn_arr = NULL;
+size_t pdcp_txpdu_arr_size = 0;
+size_t pdcp_txpdu_arr_capacity = 0;
+int pdcp_txpdu_sn_last = 0;
+int pdcp_txpdu_sn_first = 0;
+int pdcp_txpdu_pkt_count;
+
+int *pdcp_rxpdu_sn_arr = NULL;
+size_t pdcp_rxpdu_arr_size = 0;
+size_t pdcp_rxpdu_arr_capacity = 0;
+int pdcp_rxpdu_sn_last = 0;
+int pdcp_rxpdu_sn_first = 0;
+int pdcp_rxpdu_pkt_count;
 
 static
 void sm_cb_mac(sm_ag_if_rd_t const* rd)
@@ -54,8 +78,8 @@ void sm_cb_mac(sm_ag_if_rd_t const* rd)
   assert(rd->ind.type == MAC_STATS_V0);
  
   int64_t now = time_now_us();
-  if(cnt_mac % 1024 == 0)
-    printf("MAC ind_msg latency = %ld μs\n", now - rd->ind.mac.msg.tstamp);
+  // if(cnt_mac % 1024 == 0)
+  //   printf("MAC ind_msg latency = %ld μs\n", now - rd->ind.mac.msg.tstamp);
   cnt_mac++;
 }
 
@@ -72,8 +96,29 @@ void sm_cb_rlc(sm_ag_if_rd_t const* rd)
 
   int64_t now = time_now_us();
 
-  if(cnt_rlc % 1024 == 0)
-    printf("RLC ind_msg latency = %ld μs\n", now - rd->ind.rlc.msg.tstamp);
+
+  const rlc_ind_msg_t* msg = &rd->ind.rlc.msg;
+
+  for (size_t i = 0; i < msg->len; ++i) {
+    const rlc_radio_bearer_stats_t* rb = &msg->rb[i];
+
+    if(cnt_rlc % 1024 == 0) {
+      // printf("RLC ind_msg latency = %ld μs\n", now - rd->ind.rlc.msg.tstamp);
+      // printf("[RLC PDU] TX PDUs = %u, RX PDUs = %u, TX PDU Packets Dropped = %u, RX PDU Packets Dropped = %u\n",
+      //        rb->txpdu_pkts,      // aggregated number of transmitted RLC PDUs
+      //        rb->rxpdu_pkts,      // aggregated number of received RLC PDUs 
+      //        rb->txpdu_dd_pkts,   // aggregated number of dropped or discarded tx packets by RLC
+      //        rb->rxpdu_dd_pkts);  // aggregated number of rx packets dropped or discarded by RLC
+      // printf("[RLC SDU] TX SDUs = %u, RX SDUs = %u, RX SDU Packets Dropped = %u\n",
+      //        rb->txsdu_pkts,      // number of SDUs delivered
+      //        rb->rxsdu_pkts,      // number of SDUs received
+      //        rb->rxsdu_dd_pkts);  // number of dropped or discarded SDUs
+    }
+    tx_stats.rlc_pkt_loss = rb->txpdu_dd_pkts; // + txsdu_dd_pkts
+    tx_stats.rlc_pkt_total = rb->txpdu_pkts; // + txsdu_pkts
+    rx_stats.rlc_pkt_loss = rb->rxpdu_dd_pkts + rb->rxsdu_dd_pkts;
+    rx_stats.rlc_pkt_total = rb->rxpdu_pkts + rb->rxsdu_pkts;
+  }
   cnt_rlc++;
 }
 
@@ -82,30 +127,56 @@ uint64_t cnt_pdcp;
 
 // the following function has been modified extensively
 // original implementation can be found in FlexRIC repository
-static
-void sm_cb_pdcp(sm_ag_if_rd_t const* rd, void* my_context)
+void sm_cb_pdcp(sm_ag_if_rd_t const* rd)
 {
-  printf("++++ ENTERED SM_CB_PDCP ++++");
   assert(rd != NULL);
   assert(rd->type == INDICATION_MSG_AGENT_IF_ANS_V0);
   assert(rd->ind.type == PDCP_STATS_V0);
 
   int64_t now = time_now_us();
 
-  if(cnt_pdcp % 1024 == 0)
-    printf("PDCP ind_msg latency = %ld μs\n", now - rd->ind.pdcp.msg.tstamp);
+  
 
- printf("AAAAAAAAAAAA pdcp message len = %d", rd->ind.pdcp.msg.len);
- for (uint32_t i = 0; i < rd->ind.pdcp.msg.len; i++) {
-    uint64_t delivered_sdu = rd->ind.pdcp.msg.rb[i].txsdu_pkts;
-    // For discarded, there's no direct match, but you might consider:
-    uint64_t discarded_sdu = rd->ind.pdcp.msg.rb[i].rxpdu_dd_pkts;
-    printf("RB[%u]: Delivered SDUs: %" PRIu64 ", Discarded SDUs (approx): %" PRIu64 "\n", 
-            i, delivered_sdu, discarded_sdu);
-}
+  const pdcp_ind_msg_t* msg = &rd->ind.pdcp.msg;
+
+  for (size_t i = 0; i < msg->len; ++i) {
+    const pdcp_radio_bearer_stats_t* rb = &msg->rb[i];
+
+    if (cnt_pdcp % 1024 == 0) {
+      printf("PDCP ind_msg latency = %ld μs\n", now - rd->ind.pdcp.msg.tstamp);
+      printf("[PDCP SDU] UE RNTI %u RBID %u: TX SDUs = %u, RX SDUs = %u, RX Dup Discards = %u\n",
+             rb->rnti,
+             rb->rbid,
+             rb->txsdu_pkts,
+             rb->rxsdu_pkts,
+             rb->rxpdu_dd_pkts);
+    }
+    printf("Last seqence number = %u\n", rb->txpdu_sn);
+    // TO DO: Search list and ensure this sn is not already in it
+    if (rb->txpdu_sn < pdcp_txpdu_sn_last) {
+      bool new_tx_sn = true;
+      for (int i = 0; i < pdcp_txpdu_arr_size; ++i) {
+        if (rb->txpdu_sn == pdcp_txpdu_sn_arr[i]) { new_tx_sn = false; }
+      }
+      if (new_tx_sn == true) {
+        if (pdcp_txpdu_arr_size >= pdcp_txpdu_arr_capacity) {
+          pdcp_txpdu_arr_capacity = pdcp_txpdu_arr_capacity == 0 ? 1 : pdcp_txpdu_arr_capacity * 2;
+          pdcp_txpdu_sn_arr = realloc(pdcp_txpdu_sn_arr, pdcp_txpdu_arr_capacity * sizeof(int));
+        }
+        pdcp_txpdu_sn_arr[pdcp_txpdu_arr_size++] = rb->txpdu_sn;
+      }
+    }
+    pdcp_txpdu_sn_last = rb->txpdu_sn;
+    if (pdcp_txpdu_sn_first == 0) { pdcp_txpdu_sn_first = rb->txpdu_sn; }
+    pdcp_txpdu_pkt_count = rb->txpdu_sn - pdcp_txpdu_sn_first;
+    rx_stats.pdcp_pkt_loss = rb->rxpdu_dd_pkts;
+    rx_stats.pdcp_pkt_total = rb->rxpdu_pkts;
+  }
+  // tx_stats.pdcp_pkt_loss = txpdu_dd_pkts;
+  // tx_stats.pdcp_pkt_total = txpdu_pkts;
   cnt_pdcp++;
 }
-
+  
 
 static
 uint64_t cnt_gtp;
@@ -119,16 +190,16 @@ void sm_cb_gtp(sm_ag_if_rd_t const* rd)
   assert(rd->ind.type == GTP_STATS_V0);
 
   int64_t now = time_now_us();
-  if(cnt_gtp % 1024 == 0)
-    printf("GTP ind_msg latency = %ld μs\n", now - rd->ind.gtp.msg.tstamp);
-
+  // if(cnt_gtp % 1024 == 0) {
+  //   printf("GTP ind_msg latency = %ld μs\n", now - rd->ind.gtp.msg.tstamp);
+  // }
   cnt_gtp++;
 }
 
 
 int main(int argc, char *argv[])
 {
-  printf("🚨===== THIS IS THE NEW BUILD ====🚨\n"); // REMOVE AFTER DEBUG
+  // printf("🚨===== THIS IS THE NEW BUILD ====🚨\n"); // REMOVE AFTER DEBUG
 
   fr_args_t args = init_fr_args(argc, argv);
 
@@ -150,7 +221,7 @@ int main(int argc, char *argv[])
   const char* i_1 = "1_ms";
   sm_ans_xapp_t* rlc_handle = NULL;
   // PDCP indication
-  const char* i_2 = "1_ms";
+  const char* i_2 = "10_ms";
   sm_ans_xapp_t* pdcp_handle = NULL;
   // GTP indication
   const char* i_3 = "1_ms";
@@ -172,19 +243,19 @@ int main(int argc, char *argv[])
     // Start PERSONAL ADDITION
     ///////////////////////////
 
-    // Generic struct def for packet data subscriptions
-    typedef struct {
-      uint32_t measurement_types;
-      uint32_t reporting_interval_ms;
-      uint32_t ue_filter;  
-    } generic_report_config_t;
+    // // Generic struct def for packet data subscriptions
+    // typedef struct {
+    //   uint32_t measurement_types;
+    //   uint32_t reporting_interval_ms;
+    //   uint32_t ue_filter;  
+    // } generic_report_config_t;
 
-    // PDCP instance of struct
-    generic_report_config_t pdcp_meas = {
-      // .measurement_types = MEAS_TYPE_PDCP_DELIVERED_SDU_COUNT | MEAS_TYPE_PDCP_DISCARDED_SDU_COUNT,
-      .reporting_interval_ms = 1000,
-      .ue_filter = 0
-    };
+    // // PDCP instance of struct
+    // generic_report_config_t pdcp_meas = {
+    //   // .measurement_types = MEAS_TYPE_PDCP_DELIVERED_SDU_COUNT | MEAS_TYPE_PDCP_DISCARDED_SDU_COUNT,
+    //   .reporting_interval_ms = 10,
+    //   .ue_filter = 0
+    // };
 
     ///////////////////////////
     // End PERSONAL ADDITION
@@ -200,39 +271,35 @@ int main(int argc, char *argv[])
       // mac_ctrl_req_data_t wr = {.hdr.dummy = 1, .msg.action = 42 };
       // sm_ans_xapp_t const a = control_sm_xapp_api(&nodes.n[i].id, 142, &wr);
       // assert(a.success == true);
-      printf("==== ENTERED FIRST BRANCH ====");
+      // printf("==== ENTERED FIRST BRANCH ====");
       mac_handle[i] = report_sm_xapp_api(&nodes.n[i].id, 142, (void*)i_0, sm_cb_mac);
       assert(mac_handle[i].success == true);
 
       rlc_handle[i] = report_sm_xapp_api(&nodes.n[i].id, 143, (void*)i_1, sm_cb_rlc);
       assert(rlc_handle[i].success == true);
 
-      pdcp_meas.measurement_types = MEAS_TYPE_PDCP_DELIVERED_SDU_COUNT;
-      pdcp_handle[i] = report_sm_xapp_api(&nodes.n[i].id, 144, (void*)&pdcp_meas, sm_cb_pdcp);
+      pdcp_handle[i] = report_sm_xapp_api(&nodes.n[i].id, 144, (void*)i_2, sm_cb_pdcp);
       assert(pdcp_handle[i].success == true);
 
+      /*      
       pdcp_meas.measurement_types = MEAS_TYPE_PDCP_DISCARDED_SDU_COUNT;
-      pdcp_handle[i] = report_sm_xapp_api(&nodes.n[i].id, 144, (void*)&pdcp_meas, sm_cb_pdcp);
+      pdcp_handle[i] = report_sm_xapp_api(&nodes.n[i].id, 144, (void*)i_2, sm_cb_pdcp);
       assert(pdcp_handle[i].success == true);
-
+      */
       gtp_handle[i] = report_sm_xapp_api(&nodes.n[i].id, 148, (void*)i_3, sm_cb_gtp);
       assert(gtp_handle[i].success == true);
 
     } else if(n->id.type ==  ngran_gNB_CU || n->id.type ==  ngran_gNB_CUUP){
-      printf("==== ENTERED SECOND BRANCH ====");
-      pdcp_meas.measurement_types = MEAS_TYPE_PDCP_DELIVERED_SDU_COUNT;
-      pdcp_handle[i] = report_sm_xapp_api(&nodes.n[i].id, 144, (void*)&pdcp_meas, sm_cb_pdcp);
-      assert(pdcp_handle[i].success == true);
-
-      pdcp_meas.measurement_types = MEAS_TYPE_PDCP_DISCARDED_SDU_COUNT;
-      pdcp_handle[i] = report_sm_xapp_api(&nodes.n[i].id, 144, (void*)&pdcp_meas, sm_cb_pdcp);
+      // printf("==== ENTERED SECOND BRANCH ====");
+      
+      pdcp_handle[i] = report_sm_xapp_api(&nodes.n[i].id, 144, (void*)i_2, sm_cb_pdcp);
       assert(pdcp_handle[i].success == true);
 
       gtp_handle[i] = report_sm_xapp_api(&nodes.n[i].id, 148, (void*)i_3, sm_cb_gtp);
       assert(gtp_handle[i].success == true);
 
     } else if(n->id.type == ngran_gNB_DU){
-      printf("==== ENTERED THIRD BRANCH ====");
+      // printf("==== ENTERED THIRD BRANCH ====");
       mac_handle[i] = report_sm_xapp_api(&nodes.n[i].id, 142, (void*)i_0, sm_cb_mac);
       assert(mac_handle[i].success == true);
 
@@ -263,6 +330,49 @@ int main(int argc, char *argv[])
     free(pdcp_handle);
     free(gtp_handle);
   }
+  tx_stats.pdcp_pkt_loss = pdcp_txpdu_arr_size;
+  tx_stats.pdcp_pkt_total = pdcp_txpdu_pkt_count; // counts total packets as total # unique SNs
+
+  int tx_pdcp_pkt_loss = tx_stats.pdcp_pkt_loss;
+  int tx_pdcp_pkt_total = tx_stats.pdcp_pkt_total;
+
+  int rx_pdcp_pkt_loss = rx_stats.pdcp_pkt_loss;
+  int rx_pdcp_pkt_total = rx_stats.pdcp_pkt_total;
+
+  int tx_rlc_pkt_loss = tx_stats.rlc_pkt_loss;
+  int tx_rlc_pkt_total = tx_stats.rlc_pkt_total;
+
+  int rx_rlc_pkt_loss = rx_stats.rlc_pkt_loss;
+  int rx_rlc_pkt_total = rx_stats.rlc_pkt_total;
+
+  double tx_pkt_lost = tx_pdcp_pkt_loss + tx_rlc_pkt_loss;
+  double tx_pkt_total = tx_pdcp_pkt_total + tx_rlc_pkt_total;
+  double tx_packet_loss_fig = tx_pkt_lost / tx_pkt_total;
+
+  double rx_pkt_lost = rx_pdcp_pkt_loss + rx_rlc_pkt_loss;
+  double rx_pkt_total = rx_pdcp_pkt_total + rx_rlc_pkt_total;
+  double rx_packet_loss_fig = rx_pkt_lost / rx_pkt_total;
+
+  printf("DOWNLINK PACKET LOSS = %f, UPLINK PACKET LOSS = %f\n", 
+         tx_packet_loss_fig, rx_packet_loss_fig);
+
+  printf("DOWNLINK PDCP LOST: %d, DOWNLINK PDCP TOTAL: %d\n",
+         tx_pdcp_pkt_loss, tx_pdcp_pkt_total);
+  printf("DOWNLINK RLC LOST: %d, DOWNLINK RLC TOTAL: %d\n",
+         tx_rlc_pkt_loss, tx_rlc_pkt_total);
+  printf("DOWNLINK TOTAL LOST: %f, DOWNLINK TOTAL TOTAL: %f\n", 
+         tx_pkt_lost, tx_pkt_total);
+
+  printf("UPLINK PDCP LOST: %d, UPLINK PDCP TOTAL: %d\n",
+         rx_pdcp_pkt_loss, rx_pdcp_pkt_total);
+  printf("UPLINK RLC LOST: %d, UPLINK RLC TOTAL: %d\n",
+         rx_rlc_pkt_loss, rx_rlc_pkt_total);
+  printf("UPLINK TOTAL LOST: %f, UPLINK TOTAL TOTAL: %f\n", 
+         rx_pkt_lost, rx_pkt_total);
+
+  printf("[DEBUG RAW COUNTS] PDCP_LOST=%.6f, RLC_LOST=%.6f\n",
+       tx_pdcp_pkt_loss, tx_rlc_pkt_loss);
+  printf("COMPUTED TOTAL LOST = %.6f\n", tx_pkt_lost);
 
   //Stop the xApp
   while(try_stop_xapp_api() == false)
