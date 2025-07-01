@@ -19,6 +19,12 @@
  *      contact@openairinterface.org
  */
 
+ /*
+ ==== TO DO ====
+  - Pass validation
+  - Clean up file and remove unnecessary code
+ */
+
 #include "../../../../src/xApp/e42_xapp_api.h"
 #include "../../../../src/util/alg_ds/alg/defer.h"
 #include "../../../../src/util/time_now_us.h"
@@ -152,7 +158,7 @@ void sm_cb_pdcp(sm_ag_if_rd_t const* rd)
              rb->rxpdu_dd_pkts);
     }
     printf("Last seqence number = %u\n", rb->txpdu_sn);
-    // TO DO: Search list and ensure this sn is not already in it
+    // packet lost sn calculation, tx
     if (rb->txpdu_sn < pdcp_txpdu_sn_last) {
       bool new_tx_sn = true;
       for (int i = 0; i < pdcp_txpdu_arr_size; ++i) {
@@ -169,8 +175,26 @@ void sm_cb_pdcp(sm_ag_if_rd_t const* rd)
     pdcp_txpdu_sn_last = rb->txpdu_sn;
     if (pdcp_txpdu_sn_first == 0) { pdcp_txpdu_sn_first = rb->txpdu_sn; }
     pdcp_txpdu_pkt_count = rb->txpdu_sn - pdcp_txpdu_sn_first;
-    rx_stats.pdcp_pkt_loss = rb->rxpdu_dd_pkts;
-    rx_stats.pdcp_pkt_total = rb->rxpdu_pkts;
+
+    // packet lost sn calculation, rx
+    if (rb->rxpdu_sn < pdcp_rxpdu_sn_last) {
+      bool new_rx_sn = true;
+      for (int i = 0; i < pdcp_rxpdu_arr_size; ++i) {
+        if (rb->rxpdu_sn == pdcp_rxpdu_sn_arr[i]) { new_rx_sn = false; }
+      }
+      if (new_rx_sn == true) {
+        if (pdcp_rxpdu_arr_size >= pdcp_rxpdu_arr_capacity) {
+          pdcp_rxpdu_arr_capacity = pdcp_rxpdu_arr_capacity == 0 ? 1 : pdcp_rxpdu_arr_capacity * 2;
+          pdcp_rxpdu_sn_arr = realloc(pdcp_rxpdu_sn_arr, pdcp_rxpdu_arr_capacity * sizeof(int));
+        }
+        pdcp_rxpdu_sn_arr[pdcp_rxpdu_arr_size++] = rb->rxpdu_sn;
+      }
+    }
+    pdcp_rxpdu_sn_last = rb->rxpdu_sn;
+    if (pdcp_rxpdu_sn_first == 0) { pdcp_rxpdu_sn_first = rb->rxpdu_sn; }
+    pdcp_rxpdu_pkt_count = rb->rxpdu_sn - pdcp_rxpdu_sn_first;
+    // rx_stats.pdcp_pkt_loss = rb->rxpdu_dd_pkts;
+    // rx_stats.pdcp_pkt_total = rb->rxpdu_pkts;
   }
   // tx_stats.pdcp_pkt_loss = txpdu_dd_pkts;
   // tx_stats.pdcp_pkt_total = txpdu_pkts;
@@ -370,9 +394,9 @@ int main(int argc, char *argv[])
   printf("UPLINK TOTAL LOST: %f, UPLINK TOTAL TOTAL: %f\n", 
          rx_pkt_lost, rx_pkt_total);
 
-  printf("[DEBUG RAW COUNTS] PDCP_LOST=%.6f, RLC_LOST=%.6f\n",
-       tx_pdcp_pkt_loss, tx_rlc_pkt_loss);
-  printf("COMPUTED TOTAL LOST = %.6f\n", tx_pkt_lost);
+  // printf("[DEBUG RAW COUNTS] PDCP_LOST=%.6f, RLC_LOST=%.6f\n",
+  //      tx_pdcp_pkt_loss, tx_rlc_pkt_loss);
+  // printf("COMPUTED TOTAL LOST = %.6f\n", tx_pkt_lost);
 
   //Stop the xApp
   while(try_stop_xapp_api() == false)
@@ -380,6 +404,7 @@ int main(int argc, char *argv[])
 
   printf("Test xApp run SUCCESSFULLY\n");
 }
+
 
 
 
