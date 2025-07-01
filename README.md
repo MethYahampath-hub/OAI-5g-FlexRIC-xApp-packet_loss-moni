@@ -8,6 +8,8 @@
 
 (06/30/2025): Repaired xApp so it no longer fails with standard open architecture for FlexRIC. PDCP downlink packet statistics are now calculated using reported sequence number. Similar approach should be implemented for PDCP uplink. Unfortunately, this methodology can't be used for RLC because the SM doesn't provide sequence number reporting data.
 
+(06/31/2025): Updated the pdcp callback function to also count uplink/RX packet loss using SN.
+
 ==== CHANGES TO pdcp_sm_ric.c ====
 
 (06/18/2025): Removed assert statement from line 67 to prevent compilation failure; instead replaced it with printf("==== DEBUG:invalid input ===="); for debugging purposes. Intend to restore to original FlexRIC implementation after fixing the PDCP subscription call in xapp_gtp_mac_rlc_pdcp_moni.c
