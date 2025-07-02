@@ -369,30 +369,43 @@ int main(int argc, char *argv[])
   int rx_rlc_pkt_loss = rx_stats.rlc_pkt_loss;
   int rx_rlc_pkt_total = rx_stats.rlc_pkt_total;
 
-  double tx_pkt_lost = tx_pdcp_pkt_loss + tx_rlc_pkt_loss;
-  double tx_pkt_total = tx_pdcp_pkt_total + tx_rlc_pkt_total;
-  double tx_packet_loss_fig = tx_pkt_lost / tx_pkt_total;
+  // double tx_pkt_lost = tx_pdcp_pkt_loss + tx_rlc_pkt_loss;
+  // double tx_pkt_total = tx_pdcp_pkt_total + tx_rlc_pkt_total;
+  // double tx_packet_loss_fig = tx_pkt_lost / tx_pkt_total;
 
-  double rx_pkt_lost = rx_pdcp_pkt_loss + rx_rlc_pkt_loss;
-  double rx_pkt_total = rx_pdcp_pkt_total + rx_rlc_pkt_total;
-  double rx_packet_loss_fig = rx_pkt_lost / rx_pkt_total;
+  // double rx_pkt_lost = rx_pdcp_pkt_loss + rx_rlc_pkt_loss;
+  // double rx_pkt_total = rx_pdcp_pkt_total + rx_rlc_pkt_total;
+  // double rx_packet_loss_fig = rx_pkt_lost / rx_pkt_total;
 
-  printf("DOWNLINK PACKET LOSS = %f, UPLINK PACKET LOSS = %f\n", 
-         tx_packet_loss_fig, rx_packet_loss_fig);
+  double tx_pdcp_pkt_loss_fig = (double)tx_pdcp_pkt_loss / (double)tx_pdcp_pkt_total;
+  if (tx_pdcp_pkt_total == 0) { tx_pdcp_pkt_loss_fig = 0; }
+  double rx_pdcp_pkt_loss_fig = (double)rx_pdcp_pkt_loss / (double)rx_pdcp_pkt_total;
+  if (rx_pdcp_pkt_total == 0) { rx_pdcp_pkt_loss_fig = 0; }
+
+  double tx_rlc_pkt_loss_fig = (double)tx_rlc_pkt_loss / (double)tx_rlc_pkt_total;
+  if (tx_rlc_pkt_total == 0) { tx_rlc_pkt_loss_fig = 0; }
+  double rx_rlc_pkt_loss_fig = (double)rx_rlc_pkt_loss / (double)rx_rlc_pkt_total;
+  if (rx_rlc_pkt_total == 0) { rx_rlc_pkt_loss_fig = 0; }
+
+  printf("[PDCP] DOWNLINK PACKET LOSS = %f, UPLINK PACKET LOSS = %f\n", 
+         tx_pdcp_pkt_loss_fig, rx_pdcp_pkt_loss_fig);
+  
+  printf("[RLC] DOWNLINK PACKET LOSS = %f, UPLINK PACKET LOSS = %f\n", 
+         tx_rlc_pkt_loss_fig, rx_rlc_pkt_loss_fig);
 
   printf("DOWNLINK PDCP LOST: %d, DOWNLINK PDCP TOTAL: %d\n",
          tx_pdcp_pkt_loss, tx_pdcp_pkt_total);
   printf("DOWNLINK RLC LOST: %d, DOWNLINK RLC TOTAL: %d\n",
          tx_rlc_pkt_loss, tx_rlc_pkt_total);
-  printf("DOWNLINK TOTAL LOST: %f, DOWNLINK TOTAL TOTAL: %f\n", 
-         tx_pkt_lost, tx_pkt_total);
+  // printf("DOWNLINK TOTAL LOST: %f, DOWNLINK TOTAL TOTAL: %f\n", 
+  //        tx_pkt_lost, tx_pkt_total);
 
-  printf("UPLINK PDCP LOST: %d, UPLINK PDCP TOTAL: %d\n",
-         rx_pdcp_pkt_loss, rx_pdcp_pkt_total);
-  printf("UPLINK RLC LOST: %d, UPLINK RLC TOTAL: %d\n",
-         rx_rlc_pkt_loss, rx_rlc_pkt_total);
-  printf("UPLINK TOTAL LOST: %f, UPLINK TOTAL TOTAL: %f\n", 
-         rx_pkt_lost, rx_pkt_total);
+  // printf("UPLINK PDCP LOST: %d, UPLINK PDCP TOTAL: %d\n",
+  //        rx_pdcp_pkt_loss, rx_pdcp_pkt_total);
+  // printf("UPLINK RLC LOST: %d, UPLINK RLC TOTAL: %d\n",
+  //        rx_rlc_pkt_loss, rx_rlc_pkt_total);
+  // printf("UPLINK TOTAL LOST: %f, UPLINK TOTAL TOTAL: %f\n", 
+  //        rx_pkt_lost, rx_pkt_total);
 
   // printf("[DEBUG RAW COUNTS] PDCP_LOST=%.6f, RLC_LOST=%.6f\n",
   //      tx_pdcp_pkt_loss, tx_rlc_pkt_loss);
@@ -404,6 +417,10 @@ int main(int argc, char *argv[])
 
   printf("Test xApp run SUCCESSFULLY\n");
 }
+
+
+
+
 
 
 
