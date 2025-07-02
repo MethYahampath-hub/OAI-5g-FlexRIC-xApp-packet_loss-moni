@@ -8,7 +8,7 @@
 
 (06/30/2025): Repaired xApp so it no longer fails with standard open architecture for FlexRIC. PDCP downlink packet statistics are now calculated using reported sequence number. Similar approach should be implemented for PDCP uplink. Unfortunately, this methodology can't be used for RLC because the SM doesn't provide sequence number reporting data.
 
-(06/31/2025): Updated the pdcp callback function to also count uplink/RX packet loss using SN.
+(07/01/2025): Updated the pdcp callback function to also count uplink/RX packet loss using SN.
 
 ==== CHANGES TO pdcp_sm_ric.c ====
 
