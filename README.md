@@ -2,7 +2,7 @@
 
 ==== CHANGES TO xapp_gtp_mac_rlc_pdcp_moni.c ====
 
-(07/14/2025): Commented out material involving the MAC and GTP SMs because not currently necessary for packet loss calculation. Reminder to remove entirely if xApp is made more accurate and they are still not needed. 
+(07/14/2025): Commented out material involving the MAC and GTP SMs because not currently necessary for packet loss calculation. REMINDER to remove entirely if xApp is made more accurate and they are still not needed. 
 
 (07/02/2025): Packet loss statistics are now calculated per layer (PDCP and RLC). RLC packet loss will not reflect simulated changes to packet loss between UE and gNB. PDCP will reflect simulated packet loss changes, but will consistently overpredict packet loss % due to logical error. More research may be needed to fix this.
 
