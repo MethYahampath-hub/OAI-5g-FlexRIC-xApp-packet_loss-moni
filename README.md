@@ -1,6 +1,20 @@
 # OAI-5g-FlexRIC-xApp-packet_loss-moni
 
+==== CHANGES TO xapp_kpm_moni.c ====
+
+PATH: ~/flexric/examples/xApp/c/monitor/xapp_kpm_moni.c
+
+(07/17/2025): Discovered that there are reported KPM statistics for packet success rate and drop rate. Attempting to reconfigure example KPM xApp to subscribe to these statistics and use them to calculate packet loss.
+
+==== CHANGES TO sm_kpm.c ==== 
+
+PATH: ~/flexric/examples/emulator/agent/sm_kpm.c
+
+(07/17/2025): Using the required statistics necessitates subscribing to the correct KPM data: added subscriptions to packet success and drop rate KPM statistics.
+
 ==== CHANGES TO xapp_gtp_mac_rlc_pdcp_moni.c ====
+
+PATH: ~/flexric/examples/xApp/c/monitor/xapp_kpm_moni.c
 
 (07/14/2025): Commented out material involving the MAC and GTP SMs because not currently necessary for packet loss calculation. REMINDER to remove entirely if xApp is made more accurate and they are still not needed. 
 
@@ -15,6 +29,8 @@
   pdcp callback function has been modified as follows: prinf() statements to verify that the callback function was entered during runtime (for debug purposes) and additions to report delivered and discarded SDU counts
 
 ==== CHANGES TO pdcp_sm_ric.c ===
+
+NO longer valid
 
 (06/30/2025): Since xApp now works with the standard implementation for FlexRIC, DO NOT USE THIS IMPLEMENTATION FOR pdcp_sm_ric.c. Use the actual FlexRIC implementation.
 
